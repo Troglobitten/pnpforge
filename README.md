@@ -28,6 +28,30 @@ Or with compose, which keeps your games in `./data` next to the compose file:
 docker compose up -d
 ```
 
+### Permissions, on a NAS or any bind mount
+
+The container runs as an unprivileged user, so the folder you mount at `/data` has to belong to a
+user it can write as. A named volume (the `docker run` line above) handles this for you; a bind
+mount like `./data` does not, and you'll see **`EACCES: permission denied, mkdir '/data/games'`**.
+
+Find your own ids on the host with `id -u` and `id -g`, then either give the folder to the user the
+container runs as:
+
+```bash
+sudo chown -R 1000:100 ./data
+```
+
+…or run the container as the folder's owner. The bundled `docker-compose.yml` already does this and
+reads `PUID`/`PGID`, so a `.env` file beside it is enough:
+
+```ini
+PUID=1000
+PGID=100
+```
+
+On OpenMediaVault, Unraid and Synology these are usually your own account's ids rather than
+`1000:1000`, so check rather than assume.
+
 Image tags: `latest` (newest release), `0.1.0` (an exact version), `0.1` (newest patch of that
 minor). Built for `linux/amd64` and `linux/arm64`.
 

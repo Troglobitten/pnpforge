@@ -6,6 +6,16 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.1.1] — 2026-10-05
+
+### Fixed
+
+- **Permission denied on a mounted data folder.** The container runs as an unprivileged user, so a
+  bind-mounted folder owned by someone else failed at startup with an `EACCES` stack trace. The
+  bundled `docker-compose.yml` now runs as `PUID`/`PGID` (defaulting to `1000:100`), the README
+  explains how to find yours, and the server now says what is wrong and how to fix it rather than
+  printing an mkdir trace.
+
 ## [0.1.0] — 2026-10-05
 
 First public release.
@@ -28,5 +38,6 @@ First public release.
   from CC0 photographs.
 - Docker image for `linux/amd64` and `linux/arm64`.
 
-[Unreleased]: https://github.com/Troglobitten/pnpforge/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Troglobitten/pnpforge/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/Troglobitten/pnpforge/releases/tag/v0.1.1
 [0.1.0]: https://github.com/Troglobitten/pnpforge/releases/tag/v0.1.0

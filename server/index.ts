@@ -166,7 +166,12 @@ if (existsSync(DIST)) {
   });
 }
 
-await store.ensureDataDirs();
+try {
+  await store.ensureDataDirs();
+} catch (e: any) {
+  console.error(`\n${e?.message ?? e}\n`);
+  process.exit(1);
+}
 await seedIfEmpty().catch((e) => app.log.warn(`demo seed skipped: ${e?.message ?? e}`));
 await app.listen({ port: PORT, host: HOST });
 console.log(`pnpforge api listening on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}  (data: ${store.DATA_DIR})`);

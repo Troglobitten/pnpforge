@@ -71,8 +71,23 @@ async function writeJsonAtomic(file: string, data: unknown) {
 }
 
 export async function ensureDataDirs() {
-  await fs.mkdir(GAMES_DIR, { recursive: true });
-  await fs.mkdir(TRASH_DIR, { recursive: true });
+  try {
+    await fs.mkdir(GAMES_DIR, { recursive: true });
+    await fs.mkdir(TRASH_DIR, { recursive: true });
+  } catch (e: any) {
+    if (e?.code !== 'EACCES' && e?.code !== 'EPERM') throw e;
+    // Almost always a mounted folder owned by someone else — say so plainly,
+    // with the numbers needed to fix it, rather than an mkdir stack trace.
+    const ids = typeof process.getuid === 'function' ? `${process.getuid()}:${process.getgid?.()}` : null;
+    throw new Error(
+      `Cannot write to the data folder ${DATA_DIR} — pnpforge runs as ${ids ?? 'an unprivileged user'} and that folder belongs to someone else.\n` +
+        (ids
+          ? `  Give the folder to that user:  chown -R ${ids} /path/to/your/data\n` +
+            `  Or run the container as the folder's owner — docker-compose.yml:  user: "<your uid>:<your gid>"  (\`id -u\`, \`id -g\` on the host)\n`
+          : '') +
+        `  (original error: ${e.code} ${e.syscall} ${e.path})`,
+    );
+  }
 }
 
 /* ---------------- games ---------------- */

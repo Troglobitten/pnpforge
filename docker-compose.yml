@@ -4,6 +4,11 @@ services:
     image: ghcr.io/troglobitten/pnpforge:latest
     container_name: pnpforge
     restart: unless-stopped
+    # Run as the owner of the data folder below. On a NAS (OpenMediaVault,
+    # Unraid, Synology) that is usually your own account — `id -u` and `id -g`
+    # on the host tell you the two numbers. Override with PUID/PGID in a .env
+    # file, or edit this line.
+    user: "${PUID:-1000}:${PGID:-100}"
     ports:
       - "3717:3717"
     volumes:
