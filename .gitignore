@@ -1,0 +1,32 @@
+# dependencies / build output
+node_modules/
+dist/
+*.tmp
+
+# your games: never published
+data/
+data-*/
+pnpforge-backup-*/
+
+# the bundled demo PnP and its build artefacts (large; regenerate locally)
+samples/
+
+# local working notes, screenshots and scratch tooling
+.notes/
+.shots/
+scratchpad/
+scripts/legacy/
+scripts/migrate-cutter.ts
+scripts/make-sample*.ts
+scripts/seed-dev.ts
+
+# working documents for how this was built
+docs/AGENTS.md
+docs/briefs/
+docs/critiques/
+
+# editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

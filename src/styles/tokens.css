@@ -1,0 +1,118 @@
+/*
+ * pnpforge design tokens — "the workshop at night".
+ * Warm charcoal chrome, brass accent, paper/felt materials on the table.
+ * ALWAYS use these variables instead of hard-coded values.
+ */
+:root {
+  color-scheme: dark;
+
+  /* Surfaces (0 = app background, higher = more raised) */
+  --bg-0: #131216;
+  --bg-1: #1a191e;
+  --bg-2: #222127;
+  --bg-3: #2b2a31;
+  --bg-4: #36353d;
+  --bg-overlay: rgba(10, 9, 12, 0.62);
+  --bg-glass: rgba(28, 27, 33, 0.78);
+
+  /* Hairlines */
+  --line-1: rgba(255, 255, 255, 0.06);
+  --line-2: rgba(255, 255, 255, 0.1);
+  --line-3: rgba(255, 255, 255, 0.17);
+
+  /* Text */
+  --text-1: #f2efe9;
+  --text-2: #bdb8b0;
+  --text-3: #8a857e;
+  --text-4: #5f5b56;
+
+  /* Brass accent */
+  --accent: #e6a756;
+  --accent-strong: #f3bb70;
+  --accent-ink: #20150a;
+  --accent-soft: rgba(230, 167, 86, 0.14);
+  --accent-line: rgba(230, 167, 86, 0.5);
+
+  /* Status */
+  --info: #72b4db;
+  --info-soft: rgba(114, 180, 219, 0.14);
+  --success: #7cc59b;
+  --success-soft: rgba(124, 197, 155, 0.14);
+  --warning: #e8c35c;
+  --warning-soft: rgba(232, 195, 92, 0.14);
+  --danger: #e8715f;
+  --danger-soft: rgba(232, 113, 95, 0.14);
+
+  /* Paper (for card-like previews, rule text etc.) */
+  --paper: #f3ede1;
+  --paper-ink: #2a241c;
+
+  /* Type */
+  --font-ui: 'Inter Variable', 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Fraunces Variable', 'Fraunces', Georgia, 'Times New Roman', serif;
+  --font-mono: ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, Consolas, monospace;
+
+  --fs-xs: 11px;
+  --fs-sm: 12.5px;
+  --fs-md: 14px;
+  --fs-lg: 16px;
+  --fs-xl: 20px;
+  --fs-2xl: 26px;
+  --fs-3xl: 34px;
+  --fs-4xl: 46px;
+
+  /* Spacing scale (4px base) */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+  --sp-12: 48px;
+
+  /* Radii */
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-xl: 20px;
+  --r-full: 999px;
+
+  /* Elevation */
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.35), 0 1px 1px rgba(0, 0, 0, 0.2);
+  --shadow-2: 0 4px 14px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-3: 0 18px 50px rgba(0, 0, 0, 0.5), 0 4px 12px rgba(0, 0, 0, 0.35);
+  --ring: 0 0 0 2px var(--bg-0), 0 0 0 4px var(--accent);
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --dur-fast: 120ms;
+  --dur-med: 200ms;
+  --dur-slow: 340ms;
+
+  /* Hit targets */
+  --control-h-sm: 30px;
+  --control-h: 36px;
+  --control-h-lg: 44px;
+
+  /* Layers */
+  --z-sticky: 10;
+  --z-panel: 50;
+  --z-popover: 1000;
+  --z-dialog: 2000;
+  --z-toast: 3000;
+  --z-tooltip: 4000;
+}
+
+/* Bigger hit targets on touch devices (tablets). */
+@media (pointer: coarse) {
+  :root {
+    --control-h-sm: 44px;
+    --control-h: 44px;
+    --control-h-lg: 52px;
+  }
+}

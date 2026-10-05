@@ -1,0 +1,2376 @@
+/* ================================================================== */
+/* Play table — materials, pieces, hand, overlays, chrome               */
+/* (Table materials, card paper and game-piece art are exempt from the  */
+/*  "chrome colours from tokens" rule; chrome uses tokens.)             */
+/* ================================================================== */
+
+.play-table {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  isolation: isolate;
+  background: #121114;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  cursor: default;
+  contain: strict;
+}
+.play-table.is-space {
+  cursor: grab;
+}
+.play-table.is-panning,
+.play-table.is-panning * {
+  cursor: grabbing !important;
+}
+
+/* The material. One child per scale band, built by the controller; React renders
+   this element empty. Each band is world-locked by its own transform — see
+   TableController.paintSurface(). The bands are greyscale photo glazes that
+   `soft-light` over this element's background colour, so it has to be an isolated
+   group: without `isolation` the blend would reach through to the page behind. */
+.play-surface {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  isolation: isolate;
+  pointer-events: none;
+}
+/* 142% + a raster's worth: a band is drawn at the nearest power-of-two raster and
+   the leftover scale (never below 1/√2) rides on its transform, so at the worst
+   residual the element still has to reach across the viewport. The constant must
+   cover the largest raster any band uses (2048, for the close-up photo band) or
+   the table goes bare at the edge mid-zoom. */
+.play-surface__band {
+  position: absolute;
+  left: 0;
+  top: 0;
+  /* viewport + one whole tile in each direction: the tile is only ever translated */
+  width: calc(100% + 8000px);
+  height: calc(100% + 8000px);
+  transform-origin: 0 0;
+  will-change: transform;
+}
+.play-lighting {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+.play-world {
+  --hud: 1;
+  /* `--hud-i` is `--hud` without its upper cap: worn by interactive HUD elements (drag
+     handles, lock pins) so they hold a constant on-screen size at every zoom instead of
+     shrinking with the world once the cap bites. Written by applyCamera(). */
+  --hud-i: 1;
+  --px: 1;
+  --hit-min: 34px;
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  z-index: 2;
+  transform-origin: 0 0;
+}
+
+/* ---------------------------------------------------------------- */
+/* Entity frame                                                        */
+/* ---------------------------------------------------------------- */
+
+.play-ent,
+.play-ent__rot {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+}
+.play-ent__rot {
+  transition: transform 260ms var(--ease-spring);
+}
+.play-ent__body {
+  position: absolute;
+  transition: transform 140ms var(--ease-out);
+}
+.play-ent.is-hidden {
+  visibility: hidden;
+}
+.play-ent--stack .play-ent__body {
+  pointer-events: none;
+}
+.play-ent--stack .play-card,
+.play-hud {
+  pointer-events: auto;
+}
+.play-ent:not(.is-fixed) .play-ent__body > *,
+.play-ent:not(.is-fixed) .play-card {
+  cursor: grab;
+}
+.play-ghost * {
+  transition: none !important;
+}
+
+/* selection: brass outline, constant screen thickness */
+.play-ent.is-selected .play-ent__body::after,
+.play-ent.is-target .play-ent__body::after {
+  content: '';
+  position: absolute;
+  inset: calc(var(--px) * -4px);
+  border-radius: calc(var(--sel-r, 10px) + var(--px) * 4px);
+  box-shadow:
+    0 0 0 calc(var(--px) * 2px) var(--accent),
+    0 0 calc(var(--px) * 16px) calc(var(--px) * 2px) rgba(230, 167, 86, 0.35);
+  pointer-events: none;
+  z-index: 800;
+}
+.play-ent--stack .play-ent__body {
+  --sel-r: 12px;
+}
+/* a selected die draws its own ring (.die3d__ring) so the ring travels with it while it rolls */
+.play-ent--die.is-selected:not(.is-target) .play-ent__body::after {
+  display: none;
+}
+.play-ent--token .play-ent__body:has(.play-token--round) {
+  --sel-r: 999px;
+}
+.play-ent--counter .play-ent__body {
+  --sel-r: 22px;
+}
+.play-ent.is-target .play-ent__body {
+  transform: scale(1.035);
+}
+/* The drag ghost sits exactly on top of the target, so the ring has to be drawn
+   clearly OUTSIDE the card — otherwise you cannot tell what you are about to merge onto. */
+.play-ent.is-target .play-ent__body::after {
+  inset: calc(var(--px) * -14px);
+  border-radius: calc(var(--sel-r, 10px) + var(--px) * 14px);
+  box-shadow:
+    0 0 0 calc(var(--px) * 3px) var(--accent-strong),
+    0 0 calc(var(--px) * 34px) calc(var(--px) * 10px) rgba(243, 187, 112, 0.6),
+    inset 0 0 0 calc(var(--px) * 10px) rgba(243, 187, 112, 0.16);
+  animation: play-target 900ms ease-in-out infinite alternate;
+}
+/* a lifted "slot" behind the ghost: the target grows a shadowed plinth */
+.play-ent.is-target .play-ent__body::before {
+  content: '';
+  position: absolute;
+  inset: calc(var(--px) * -10px);
+  border-radius: calc(var(--sel-r, 10px) + var(--px) * 10px);
+  background: rgba(243, 187, 112, 0.14);
+  box-shadow: 0 calc(var(--px) * 10px) calc(var(--px) * 24px) rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  z-index: -1;
+}
+@keyframes play-target {
+  to {
+    opacity: 0.65;
+  }
+}
+
+/* ---------------------------------------------------------------- */
+/* Cards                                                               */
+/* ---------------------------------------------------------------- */
+
+.play-card {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border-radius: var(--r);
+  perspective: 2400px;
+}
+.play-card.is-gone {
+  visibility: hidden;
+}
+.play-card__flip {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  transform-style: preserve-3d;
+  transition: transform 360ms cubic-bezier(0.3, 0.7, 0.3, 1);
+}
+.play-card__flip.is-down {
+  transform: rotateY(180deg);
+}
+.play-card__face {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: var(--r);
+  background: #f4efe4;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.3),
+    0 1px 1px rgba(0, 0, 0, 0.25),
+    0 3px 7px rgba(0, 0, 0, 0.24);
+}
+.play-card__face::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow:
+    inset 0 0 0 1.5px rgba(255, 255, 255, 0.2),
+    inset 0 -3px 4px rgba(0, 0, 0, 0.06);
+  pointer-events: none;
+}
+.play-card__back {
+  transform: rotateY(180deg);
+}
+.play-card__face img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+.play-card__blank {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  padding: 16px;
+  background: linear-gradient(160deg, #f6f1e6, #e8dfcd);
+  color: #6d6252;
+  font: 600 26px/1.2 var(--font-display);
+  text-align: center;
+}
+.play-card__pattern {
+  width: 100%;
+  height: 100%;
+  background-image:
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.07) 0 7px, transparent 7px 16px),
+    repeating-linear-gradient(-45deg, rgba(0, 0, 0, 0.14) 0 7px, transparent 7px 16px);
+  box-shadow:
+    inset 0 0 0 12px rgba(0, 0, 0, 0.12),
+    inset 0 0 0 14px rgba(255, 255, 255, 0.14);
+}
+
+/* pile thickness: the paper edges peeking out below the top card */
+.play-stack__side {
+  position: absolute;
+  left: calc(var(--t) * 0.28);
+  top: var(--t);
+  border-radius: var(--r);
+  background: repeating-linear-gradient(180deg, #efe9dc 0 2.2px, #b9af9b 2.2px 3px);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.32),
+    0 4px 10px rgba(0, 0, 0, 0.32),
+    0 1px 2px rgba(0, 0, 0, 0.3);
+}
+.play-ent--stack .play-card.is-top {
+  z-index: 2;
+}
+
+/* riffle shuffle */
+.play-riffle {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+.play-riffle__card {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: hidden;
+  border-radius: var(--r);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.3),
+    0 3px 8px rgba(0, 0, 0, 0.3);
+  opacity: 0;
+  animation: 640ms cubic-bezier(0.45, 0.05, 0.3, 1) both;
+}
+.play-riffle__card.is-l {
+  animation-name: play-riffle-l;
+}
+.play-riffle__card.is-r {
+  animation-name: play-riffle-r;
+}
+.play-riffle__card img,
+.play-riffle__card .play-card__pattern {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+@keyframes play-riffle-l {
+  0% {
+    opacity: 0;
+    transform: none;
+  }
+  10% {
+    opacity: 1;
+  }
+  38% {
+    transform: translate(-58%, -4%) rotate(-9deg);
+  }
+  58% {
+    transform: translate(-54%, -3%) rotate(-7deg);
+  }
+  92% {
+    opacity: 1;
+    transform: translate(0, 0) rotate(0);
+  }
+  100% {
+    opacity: 0;
+    transform: none;
+  }
+}
+@keyframes play-riffle-r {
+  0% {
+    opacity: 0;
+    transform: none;
+  }
+  10% {
+    opacity: 1;
+  }
+  38% {
+    transform: translate(58%, -4%) rotate(9deg);
+  }
+  58% {
+    transform: translate(54%, -3%) rotate(7deg);
+  }
+  92% {
+    opacity: 1;
+    transform: translate(0, 0) rotate(0);
+  }
+  100% {
+    opacity: 0;
+    transform: none;
+  }
+}
+
+/* ---------------------------------------------------------------- */
+/* HUD bits: badges, captions, lock pins (constant on-screen size)     */
+/* ---------------------------------------------------------------- */
+
+.play-hud {
+  position: absolute;
+  z-index: 900;
+  transform-origin: 100% 0;
+}
+/* Screen-space nudge written by placeLabels() (table/labels.ts). `--px` is K/zoom, which
+   cancels the world's own scale(zoom/K), so one unit of --nx/--ny is one screen pixel at
+   any zoom — the collision pass can therefore think purely in screen coordinates. */
+.play-hud,
+.play-zone__label {
+  --nudge: translate(calc(var(--nx, 0px) * var(--px, 1)), calc(var(--ny, 0px) * var(--px, 1)));
+}
+/* Its piece is off-screen entirely — a label with nothing under it is just litter. */
+.play-hud.is-offview,
+.play-zone__label.is-offview {
+  visibility: hidden;
+}
+.play-badge {
+  top: 0;
+  right: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 24px;
+  min-width: 24px;
+  padding: 0 8px 0 5px;
+  border-radius: 999px;
+  background: rgba(22, 21, 26, 0.88);
+  color: var(--text-1);
+  font: 600 12px/1 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.4),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+  /* --hud-i, not --hud: this is a drag handle (and the only whole-stack one on touch). */
+  transform: var(--nudge) scale(var(--hud-i)) translate(38%, -38%);
+  transition: background var(--dur-fast);
+}
+.play-badge svg {
+  opacity: 0.55;
+}
+.play-badge.is-grab:hover {
+  background: rgba(40, 38, 46, 0.95);
+}
+.play-badge.is-grab::before,
+.play-lockpin::before {
+  content: '';
+  position: absolute;
+  inset: -8px;
+}
+.play-ent.is-hidden .play-hud {
+  visibility: hidden;
+}
+/* Invisible hit pad so small pieces (dice, markers) keep a 44 px touch target at
+   any zoom. Sits behind the piece, so it only catches presses that would otherwise
+   have missed and panned the table. */
+.play-hit {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: -1;
+  width: max(var(--bw), var(--hit-min, 34px) * var(--px));
+  height: max(var(--bh), var(--hit-min, 34px) * var(--px));
+  transform: translate(-50%, -50%);
+}
+.play-ent.is-fixed .play-hit {
+  display: none;
+}
+
+/* Stack captions get the same pill treatment as zone labels so they stay readable
+   over printed board art, and hide themselves when a zone label owns the space. */
+.play-caption {
+  left: 50%;
+  top: calc(100% + var(--t, 0px));
+  transform-origin: 0 0;
+  transform: var(--nudge) scale(var(--hud)) translate(-50%, 8px);
+  padding: 3px 9px;
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.94);
+  background: rgba(14, 13, 17, 0.74);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(5px);
+  font: 700 10.5px/1.3 var(--font-ui);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.play-table.is-light .play-caption {
+  color: rgba(28, 22, 14, 0.92);
+  background: rgba(255, 252, 246, 0.78);
+  box-shadow: inset 0 0 0 1px rgba(80, 62, 38, 0.2);
+}
+.play-caption.is-supply {
+  top: calc(100% + 14%);
+}
+/* Set by placeLabels(): a smaller pill fits where the full one didn't; hiding is the
+   last resort, once even the tight pill has nowhere to go. */
+.play-caption.is-tight {
+  padding: 2px 7px;
+  font-size: 9px;
+  letter-spacing: 0.05em;
+}
+.play-caption.is-crowded,
+.play-zone__label.is-crowded {
+  opacity: 0;
+}
+
+/* "what happens if I let go" — drawn well clear of the card under the pointer */
+/* Rendered outside the entity's rotated frame and anchored to the top of its world bounds
+   (`--hint-top`), so it is always upright above the piece. Never smaller than ~0.9 of its
+   natural on-screen size: at far zoom-out `--hud` is capped and would shrink it to ~5 px. */
+.play-drophint {
+  left: 0;
+  top: var(--hint-top, 0px);
+  transform-origin: 0 0;
+  transform: scale(max(var(--hud), calc(var(--px) * 0.9))) translate(-50%, calc(-100% - 14px));
+  z-index: 950;
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font: 700 12px/1.25 var(--font-ui);
+  white-space: nowrap;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  animation: play-drophint-in 150ms var(--ease-out);
+}
+@keyframes play-drophint-in {
+  from {
+    opacity: 0;
+  }
+}
+.play-lockpin {
+  top: 0;
+  right: 0;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: rgba(22, 21, 26, 0.72);
+  color: rgba(255, 255, 255, 0.78);
+  box-shadow:
+    0 1px 4px rgba(0, 0, 0, 0.35),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+  cursor: pointer !important;
+  opacity: 0.7;
+  /* a tap target ("tap to unlock") — same screen-px floor as the badge */
+  transform: var(--nudge) scale(var(--hud-i)) translate(-8px, 8px);
+  transition: opacity var(--dur-fast), background var(--dur-fast);
+}
+.play-lockpin:hover {
+  opacity: 1;
+  background: rgba(22, 21, 26, 0.92);
+  color: var(--accent);
+}
+
+/* ---------------------------------------------------------------- */
+/* Boards                                                              */
+/* ---------------------------------------------------------------- */
+
+.play-board {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--r);
+  background: #cdb993;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.35),
+    0 5px 0 -1px #3a2e22,
+    0 12px 28px rgba(0, 0, 0, 0.42);
+}
+.play-board img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+  pointer-events: none;
+}
+.play-board__blank {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  color: #5a4630;
+  font: 600 40px var(--font-display);
+}
+
+/* ---------------------------------------------------------------- */
+/* Tokens                                                              */
+/* ---------------------------------------------------------------- */
+
+.play-token {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+}
+.play-token--round {
+  --tr: 50%;
+}
+.play-token--square,
+.play-token--rect {
+  --tr: 14%;
+}
+.play-token--hex {
+  --tr: 0;
+}
+.play-token__face,
+.play-token__edge {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--tr);
+}
+.play-token__face {
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: var(--tc);
+  box-shadow:
+    inset 0 0 0 1.5px rgba(255, 255, 255, 0.28),
+    inset 0 -4px 6px rgba(0, 0, 0, 0.22),
+    0 2px 3px rgba(0, 0, 0, 0.4);
+}
+.play-token.has-img .play-token__face {
+  background: color-mix(in srgb, var(--tc) 80%, #000);
+  box-shadow: 0 2px 3px rgba(0, 0, 0, 0.4);
+}
+.play-token__face img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+.play-token.is-down .play-token__face {
+  filter: brightness(0.72) saturate(0.8);
+}
+.play-token.is-down .play-token__label {
+  opacity: 0;
+}
+.play-token__label {
+  color: rgba(0, 0, 0, 0.72);
+  font: 700 38cqmin/1 var(--font-display);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+.play-token--hex .play-token__face,
+.play-token--hex .play-token__edge {
+  clip-path: polygon(25% 3%, 75% 3%, 100% 50%, 75% 97%, 25% 97%, 0 50%);
+}
+.play-token--hex {
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.4));
+}
+.play-token__edge {
+  background: color-mix(in srgb, var(--tc) 50%, #000);
+  transform: translateY(calc(var(--i) * 4.4px));
+  box-shadow: 0 2px 3px rgba(0, 0, 0, 0.32);
+}
+.play-token__dish {
+  position: absolute;
+  inset: -16%;
+  border-radius: var(--tr);
+  background: radial-gradient(closest-side, rgba(0, 0, 0, 0.34), rgba(0, 0, 0, 0.2) 75%, rgba(0, 0, 0, 0.05));
+  box-shadow:
+    inset 0 3px 8px rgba(0, 0, 0, 0.5),
+    0 1px 0 rgba(255, 255, 255, 0.1);
+}
+.play-token--hex .play-token__dish {
+  border-radius: 22%;
+}
+.play-token__badge {
+  transform: var(--nudge) scale(var(--hud-i)) translate(30%, -30%);
+}
+.play-token__badge.is-supply {
+  padding: 0 7px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 15px;
+}
+
+/* ---------------------------------------------------------------- */
+/* Game pieces                                                         */
+/* ---------------------------------------------------------------- */
+
+/* The lit image stays screen-aligned (light from one direction); the piece's yaw is rendered in. */
+.play-piece {
+  position: absolute;
+  inset: 0;
+  transition: rotate 260ms var(--ease-spring);
+}
+.play-piece > .piece3d {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+.play-ent--piece .play-ent__body {
+  --sel-r: 999px;
+  pointer-events: none;
+}
+/* only the piece (or its bowl) is grabbable, not the square around it or its shadow */
+.play-piece__grab {
+  position: absolute;
+  inset: 7%;
+  border-radius: 50%;
+  pointer-events: auto;
+}
+.play-ent--piece .play-hit,
+.play-ent--piece .play-badge {
+  pointer-events: auto;
+}
+/* The ∞ of a supply: anchored at the bowl's 45° rim point and pushed out along the diagonal by half its
+   size, so its inner edge just touches the rim. Sized from the bowl in world px, clamped in screen px
+   (--px = world px per screen px): never bigger than a quarter of the bowl, never an unreadable speck. */
+.play-piece__inf {
+  --b: clamp(calc(12px * var(--px)), calc(var(--bowl) * 0.24), calc(22px * var(--px)));
+  position: absolute;
+  top: 14.6%;
+  right: 14.6%;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: var(--b);
+  height: var(--b);
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: 0 calc(var(--b) * 0.06) calc(var(--b) * 0.2) rgba(0, 0, 0, 0.35);
+  font: 700 calc(var(--b) * 0.72) / 1 var(--font-ui);
+  transform: translate(85%, -85%);
+  pointer-events: none;
+}
+.play-ent.is-hidden .play-piece__inf {
+  visibility: hidden;
+}
+
+/* ---------------------------------------------------------------- */
+/* Dice                                                                */
+/* ---------------------------------------------------------------- */
+
+.play-die {
+  position: absolute;
+  inset: 0;
+  transition: rotate 260ms var(--ease-spring);
+}
+/* a handful of dice in the hand: the pieces themselves ride the pointer, lifted (translate only —
+   a scale on a die's ancestors re-lays out its prints). The lift eases in on pickup only; at
+   release it drops at once, so no transition runs on thirty dice while their throw starts. */
+.play-ent.is-carried {
+  z-index: 900;
+}
+.play-ent.is-carried .play-die {
+  translate: 0 -13%;
+  transition:
+    rotate 260ms var(--ease-spring),
+    translate 140ms var(--ease-out);
+}
+.play-ent.is-carried .die3d__shadow {
+  transition:
+    translate 140ms var(--ease-out),
+    scale 140ms var(--ease-out);
+  translate: 9% 12%;
+  scale: 1.12;
+  opacity: 0.75;
+}
+
+/* ---------------------------------------------------------------- */
+/* Counters                                                            */
+/* ---------------------------------------------------------------- */
+
+.play-counter {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  /* no overflow:hidden — it would clip the grown touch targets on the +/- buttons.
+     The label clips itself, so nothing actually needs to be cut off here. */
+  border-radius: 22px;
+  background: linear-gradient(180deg, #34323b, #1f1e24);
+  box-shadow:
+    inset 0 0 0 1.5px rgba(255, 255, 255, 0.08),
+    inset 0 7px 0 var(--c),
+    0 4px 0 #111014,
+    0 12px 24px rgba(0, 0, 0, 0.42);
+}
+.play-counter__label {
+  padding: 16px 16px 0;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--c) 55%, #fff);
+  font: 700 17px/1 var(--font-ui);
+  letter-spacing: 0.1em;
+  text-align: center;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.play-counter__row {
+  display: grid;
+  flex: 1;
+  grid-template-columns: 62px 1fr 62px;
+  align-items: center;
+  padding: 0 8px 8px;
+}
+.play-counter__btn {
+  position: relative; /* the grown touch target below is sized against THIS, not the counter */
+  display: grid;
+  place-items: center;
+  height: 62px;
+  border-radius: 16px;
+  color: var(--text-2);
+  font: 500 44px/1 var(--font-ui);
+  cursor: pointer !important;
+  transition: background var(--dur-fast), color var(--dur-fast);
+}
+.play-counter__btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-1);
+}
+.play-counter__btn:active {
+  background: rgba(255, 255, 255, 0.16);
+}
+.play-counter__btn.is-disabled {
+  opacity: 0.25;
+}
+/* The counter scales with the table, so its +/- can fall well under the pointer minimum —
+   on a tablet at fit-all, and on either pointer once you zoom out (7x7 px at far zoom-out
+   before this floored on fine pointers too). Grow the touch target (never the ink) until it
+   gets there, against the same `--hit-min` token `.play-hit` uses (34px fine / 46px coarse).
+   --px = world px per screen px, so `var(--hit-min) * var(--px)` is that many real screen px. */
+.play-counter__btn::before {
+  content: '';
+  position: absolute;
+  /* Grow AWAY from the value only. A symmetric box would reach across the middle and
+     steal presses meant for the value (and for the other button). */
+  top: min(0px, calc((62px - var(--hit-min, 34px) * var(--px)) / 2));
+  bottom: min(0px, calc((62px - var(--hit-min, 34px) * var(--px)) / 2));
+  left: 0;
+  right: 0;
+}
+.play-counter__btn[data-part='dec']::before {
+  left: min(0px, calc(62px - var(--hit-min, 34px) * var(--px)));
+}
+.play-counter__btn[data-part='inc']::before {
+  right: min(0px, calc(62px - var(--hit-min, 34px) * var(--px)));
+}
+.play-counter__value {
+  color: var(--text-1);
+  font: 700 58px/1 var(--font-display);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  animation: play-tick 220ms var(--ease-spring);
+}
+@keyframes play-tick {
+  from {
+    transform: scale(1.22);
+    color: color-mix(in srgb, var(--c) 45%, #fff);
+  }
+}
+
+/* ---------------------------------------------------------------- */
+/* Zones                                                               */
+/* ---------------------------------------------------------------- */
+
+.play-zone {
+  position: absolute;
+  inset: 0;
+  border: max(3px, calc(var(--px) * 1.5px)) dashed color-mix(in srgb, var(--zc) 65%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--zc) 7%, transparent);
+  transition:
+    background var(--dur-med),
+    border-color var(--dur-med),
+    box-shadow var(--dur-med);
+}
+/* Sits ON the dashed edge like a fieldset legend, so it never lands on the board's own
+   printed zone title (which is what a designer puts INSIDE the box). */
+.play-zone__label {
+  position: absolute;
+  left: 10px;
+  top: 0;
+  max-width: calc(100% - 20px);
+  transform: var(--nudge) translateY(-52%);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(12, 11, 15, 0.62);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(4px);
+  color: color-mix(in srgb, var(--zc) 55%, #fff);
+  /* two-line wrap instead of "CLAIMED W…" — a dashed zone has room below the first line */
+  font: 700 max(16px, calc(10.5px * var(--hud))) / 1.18 var(--font-ui);
+  letter-spacing: 0.06em;
+  overflow-wrap: anywhere;
+  text-transform: uppercase;
+  opacity: 0.94;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+}
+.play-table.is-light .play-zone__label {
+  background: rgba(255, 252, 246, 0.7);
+  box-shadow: inset 0 0 0 1px rgba(80, 62, 38, 0.18);
+  color: color-mix(in srgb, var(--zc) 70%, #2a1f12);
+  text-shadow: none;
+}
+/* The face-up/face-down promise is only interesting while you are holding cards —
+   at rest, nine zones repeating "face up" is just noise. */
+/* See TableController.applyCamera: far out, these would pile on top of each other. */
+.play-zone__label,
+.play-caption {
+  transition: opacity var(--dur-med) var(--ease-out);
+}
+.play-table.is-far .play-zone__label,
+.play-table.is-far .play-caption {
+  opacity: 0;
+}
+/* Names setting off: a name shown on demand (hover, selection, drop target). It was asked
+   for, so it shows even at far zoom, and fades in rather than popping. */
+.play-zone__label.is-peek,
+.play-caption.is-peek {
+  animation: play-fade-in 140ms var(--ease-out);
+}
+.play-table.is-far .play-zone__label.is-peek,
+.play-table.is-far .play-caption.is-peek {
+  opacity: 0.94;
+}
+/* Kept out of the flow entirely when idle: an invisible third line would otherwise
+   make the label's line-clamp truncate a name that actually fits. */
+.play-zone__hint {
+  display: none;
+  font-size: 0.72em;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  opacity: 0.82;
+}
+.play-ent--zone.is-armed .play-zone__hint,
+.play-ent--zone.is-target .play-zone__hint {
+  display: block;
+  animation: play-fade-in 180ms var(--ease-out);
+}
+/* the hint adds a line — don't let the clamp eat the name to make room for it */
+.play-ent--zone.is-armed .play-zone__label,
+.play-ent--zone.is-target .play-zone__label {
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+}
+.play-ent--zone.is-armed .play-zone {
+  border-color: var(--zc);
+  background: color-mix(in srgb, var(--zc) 12%, transparent);
+}
+.play-ent--zone.is-target .play-ent__body {
+  transform: none;
+}
+.play-ent--zone.is-target .play-ent__body::after {
+  display: none;
+}
+/* ---- v2-6: grids, what a zone takes, where a drop lands ---- */
+.play-zone.is-grid {
+  border-radius: 10px;
+}
+.play-zone__cells {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+.play-zone__cell {
+  fill: color-mix(in srgb, var(--zc) 9%, transparent);
+  stroke: color-mix(in srgb, var(--zc) 52%, transparent);
+  stroke-width: clamp(1.5px, calc(var(--px) * 1.2px), 5px);
+  transition: fill var(--dur-med);
+}
+.play-ent--zone.is-armed .play-zone__cell {
+  fill: color-mix(in srgb, var(--zc) 15%, transparent);
+  stroke: color-mix(in srgb, var(--zc) 75%, transparent);
+}
+/* An endless grid's entity is only its origin cell, shown in the editor to select and move it. */
+.play-zone.is-endless {
+  border-style: dotted;
+  background: color-mix(in srgb, var(--zc) 14%, transparent);
+}
+[data-mode='play'] .play-ent--zone.is-endless {
+  display: none;
+}
+.play-ent--zone.is-endless.is-target .play-zone {
+  border-style: dotted;
+  box-shadow: none;
+}
+/* the origin cell is small: its name rides above it on one line instead of wrapping inside it */
+.play-zone.is-endless .play-zone__label {
+  max-width: none;
+  white-space: nowrap;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+}
+.play-zone__origin {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(var(--px) * 22px);
+  height: calc(var(--px) * 22px);
+  transform: translate(-50%, -50%);
+  background:
+    linear-gradient(var(--zc), var(--zc)) center / 100% calc(var(--px) * 2px) no-repeat,
+    linear-gradient(var(--zc), var(--zc)) center / calc(var(--px) * 2px) 100% no-repeat;
+  opacity: 0.85;
+}
+.play-grids {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.play-grid-endless {
+  position: absolute;
+  background-repeat: repeat;
+  transition: opacity 180ms var(--ease-out);
+}
+/* carrying something this zone won't take: it steps back… */
+.play-ent--zone.is-refusing .play-zone {
+  border-color: color-mix(in srgb, var(--zc) 30%, transparent);
+  background: transparent;
+  opacity: 0.55;
+}
+.play-ent--zone.is-refusing .play-zone__label {
+  opacity: 0.5;
+}
+/* …and the one under the piece says what it does take */
+.play-ent--zone.is-refused .play-zone {
+  opacity: 0.8;
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--zc) 12%, transparent) 0 calc(var(--px) * 6px),
+    transparent 0 calc(var(--px) * 14px)
+  );
+}
+.play-drophint.is-refuse {
+  background: rgba(22, 21, 26, 0.88);
+  color: rgba(255, 255, 255, 0.9);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.14),
+    0 6px 18px rgba(0, 0, 0, 0.45);
+}
+.play-landmark-wrap {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  z-index: 900;
+  pointer-events: none;
+}
+/* "lands here": the item's own footprint (a cell on a grid) as a light outline with a faint fill in the
+   zone colour — never a dark fill, which reads as a hole or a shadow under the carried piece */
+.play-landmark {
+  position: absolute;
+  left: 0;
+  top: 0;
+  box-sizing: border-box;
+  border-radius: 22%;
+  border: clamp(2px, calc(var(--px) * 2px), 12px) solid color-mix(in srgb, var(--zc) 55%, #fff);
+  background: color-mix(in srgb, color-mix(in srgb, var(--zc) 60%, #fff) 16%, transparent);
+  box-shadow: 0 0 calc(var(--px) * 16px) color-mix(in srgb, var(--zc) 45%, transparent);
+  animation: play-fade-in 140ms var(--ease-out);
+}
+.play-landmark.is-cell {
+  border-radius: 10px;
+}
+.play-landmark.is-round {
+  border-radius: 50%;
+}
+.play-landmark.is-merge {
+  background: transparent;
+  animation: play-landmark-pulse 800ms ease-in-out infinite alternate;
+}
+.play-landmark.is-beside {
+  border-style: dashed;
+  background: transparent;
+}
+@keyframes play-landmark-pulse {
+  to {
+    box-shadow: 0 0 calc(var(--px) * 30px) color-mix(in srgb, var(--zc) 80%, #fff);
+  }
+}
+.play-refusehint {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 70;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(22, 21, 26, 0.9);
+  color: rgba(255, 255, 255, 0.92);
+  font: 700 12px/1.25 var(--font-ui);
+  white-space: nowrap;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.14),
+    0 6px 18px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  opacity: 0;
+}
+.play-refusehint.is-placed {
+  opacity: 1;
+  transition: opacity 120ms var(--ease-out);
+}
+.play-refusehint[hidden] {
+  display: none;
+}
+@media (pointer: coarse) {
+  .play-refusehint {
+    font-size: 14px;
+    padding: 8px 14px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .play-landmark,
+  .play-landmark.is-merge {
+    animation: none;
+  }
+}
+.play-ent--zone.is-target .play-zone {
+  border-style: solid;
+  background: color-mix(in srgb, var(--zc) 22%, transparent);
+  box-shadow:
+    0 0 0 calc(var(--px) * 2px) var(--zc),
+    0 0 calc(var(--px) * 34px) color-mix(in srgb, var(--zc) 60%, transparent),
+    inset 0 0 calc(var(--px) * 34px) color-mix(in srgb, var(--zc) 30%, transparent);
+}
+
+/* ---------------------------------------------------------------- */
+/* Notes                                                               */
+/* ---------------------------------------------------------------- */
+
+.play-note {
+  position: absolute;
+  inset: 0;
+  padding: 26px 18px 16px;
+  border-radius: 3px 3px 14px 3px;
+  background: var(--nc) linear-gradient(170deg, rgba(255, 255, 255, 0.28), rgba(0, 0, 0, 0.05));
+  color: #3b3222;
+  font-family: var(--font-display);
+  font-size: var(--nfs, 21px);
+  font-weight: 500;
+  line-height: 1.35;
+  box-shadow:
+    0 1px 1px rgba(0, 0, 0, 0.18),
+    0 10px 18px -6px rgba(0, 0, 0, 0.5);
+}
+.play-note::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -10px;
+  width: 38%;
+  height: 24px;
+  background: rgba(255, 255, 255, 0.42);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+  transform: translateX(-50%) rotate(-2deg);
+}
+.play-note__text {
+  height: 100%;
+  overflow: hidden;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.play-note__text.is-empty {
+  font-style: italic;
+  opacity: 0.45;
+}
+.play-note__edit {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  resize: none;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: text !important;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.play-ent--note.is-editing .play-note {
+  box-shadow:
+    0 0 0 calc(var(--px) * 2px) var(--accent),
+    0 10px 18px -6px rgba(0, 0, 0, 0.5);
+}
+
+/* ---------------------------------------------------------------- */
+/* Ghost (what the hand is carrying)                                   */
+/* ---------------------------------------------------------------- */
+
+.play-ghost {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 60;
+  pointer-events: none;
+  will-change: transform;
+}
+.play-ghost__scale {
+  transform-origin: 0 0;
+  transition: transform 170ms var(--ease-out) !important;
+}
+.play-ghost__tilt {
+  will-change: transform;
+}
+.play-ghost__lift {
+  animation: play-lift 160ms var(--ease-out) forwards;
+}
+@keyframes play-lift {
+  to {
+    transform: scale(1.06);
+  }
+}
+.play-ghost .play-card__face,
+.play-ghost .play-token__face,
+.play-ghost .play-board,
+.play-ghost .play-counter,
+.play-ghost .play-note {
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.22),
+    0 26px 40px rgba(0, 0, 0, 0.36),
+    0 9px 14px rgba(0, 0, 0, 0.24);
+}
+.play-ghost .play-card__flip {
+  transition: none;
+}
+
+.play-marquee {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 55;
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  background: var(--accent-soft);
+  pointer-events: none;
+}
+
+/* long-press progress ring (touch) */
+.play-lpring {
+  position: absolute;
+  z-index: 70;
+  width: 64px;
+  height: 64px;
+  margin: -32px 0 0 -32px;
+  /* card backs are patterned and often gold — without a scrim the ring vanishes into them */
+  border-radius: 999px;
+  background: radial-gradient(circle at 50% 50%, rgba(8, 7, 10, 0.62) 0 46%, rgba(8, 7, 10, 0) 72%);
+  pointer-events: none;
+  animation: play-fade-in 100ms 110ms both;
+}
+.play-lpring svg {
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.8));
+}
+.play-lpring__track {
+  fill: rgba(12, 11, 15, 0.55);
+  stroke: rgba(255, 255, 255, 0.4);
+  stroke-width: 4;
+}
+.play-lpring__bar {
+  fill: none;
+  stroke: var(--accent);
+  stroke-dasharray: 163.4;
+  stroke-dashoffset: 163.4;
+  stroke-linecap: round;
+  stroke-width: 4.5;
+  transform: rotate(-90deg);
+  transform-origin: 32px 32px;
+  animation: play-lp 340ms 110ms linear forwards;
+}
+@keyframes play-lp {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes play-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* ---------------------------------------------------------------- */
+/* Zoom controls                                                       */
+/* ---------------------------------------------------------------- */
+
+.play-zoom {
+  position: absolute;
+  right: 14px;
+  bottom: calc(var(--hand-h, 0px) + 14px);
+  /* above .play-hand (45): its shelf spans the whole tray and was swallowing every click
+     on these buttons whenever the hand sat below them */
+  z-index: 46;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  border-radius: var(--r-lg);
+  background: var(--bg-glass);
+  backdrop-filter: blur(16px) saturate(1.2);
+  box-shadow:
+    var(--shadow-2),
+    inset 0 0 0 1px var(--line-2);
+  transition: bottom var(--dur-slow) var(--ease-out);
+}
+.play-table[data-mode='setup'] .play-zoom {
+  --hand-h: 0px;
+}
+
+/* ---------------------------------------------------------------- */
+/* Dice: "Roll N dice" bar + results readout                          */
+/* ---------------------------------------------------------------- */
+
+.play-dicebar {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--hand-h, 0px) + 14px);
+  z-index: 46;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  border-radius: var(--r-lg);
+  background: var(--bg-glass);
+  backdrop-filter: blur(16px) saturate(1.2);
+  box-shadow:
+    var(--shadow-2),
+    inset 0 0 0 1px var(--line-2);
+  translate: calc(-50% + var(--dodge, 0px)) 0;
+  animation: play-dicebar-in 180ms var(--ease-out) both;
+  transition:
+    bottom var(--dur-slow) var(--ease-out),
+    translate var(--dur-med) var(--ease-out);
+}
+.play-dicebar__hint {
+  padding: 0 6px 0 4px;
+  color: var(--text-2);
+  font: 600 13px/1.2 var(--font-ui);
+  white-space: nowrap;
+}
+.play-dicebar__hint:first-child {
+  padding-left: 10px;
+}
+.play-dicebar__kbd {
+  margin: 0 2px;
+  opacity: 0.8;
+}
+@media (pointer: coarse) {
+  .play-dicebar__kbd {
+    display: none;
+  }
+}
+@keyframes play-dicebar-in {
+  from {
+    opacity: 0;
+    translate: calc(-50% + var(--dodge, 0px)) 8px;
+  }
+}
+.play-rolls__times {
+  margin-left: 2px;
+  font-size: 12px;
+  font-weight: 700;
+  opacity: 0.8;
+}
+
+.play-rolls {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 47;
+  /* information only: a press on it reaches the table (and any die) underneath — only × is a control */
+  pointer-events: none;
+}
+.play-rolls__close {
+  pointer-events: auto;
+}
+.play-rolls__inner {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  max-width: min(420px, calc(100vw - 48px));
+  padding: 10px 42px 10px 12px;
+  border-radius: var(--r-lg);
+  background: var(--bg-glass);
+  backdrop-filter: blur(16px) saturate(1.2);
+  box-shadow:
+    var(--shadow-3),
+    inset 0 0 0 1px var(--line-2);
+  animation: play-rolls-in 200ms var(--ease-out) both;
+}
+.play-rolls.is-leaving .play-rolls__inner {
+  animation: play-rolls-out 160ms ease-in forwards;
+}
+.play-rolls__groups {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 14px;
+  min-width: 0;
+}
+.play-rolls__group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.play-rolls__name {
+  max-width: 140px;
+  overflow: hidden;
+  color: var(--text-3);
+  font: 600 11.5px/1.2 var(--font-ui);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.play-rolls__name em {
+  color: var(--text-4);
+  font-style: normal;
+}
+.play-rolls__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.play-rolls__chip {
+  display: inline-grid;
+  place-items: center;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 6px;
+  border-radius: 7px;
+  font: 700 16px/1 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.16),
+    inset 0 -2px 0 rgba(0, 0, 0, 0.2),
+    0 1px 2px rgba(0, 0, 0, 0.3);
+}
+.play-rolls__chip.is-wide {
+  font-size: 12.5px;
+  letter-spacing: 0.02em;
+}
+.play-rolls__chip img {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+}
+.play-rolls__total {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  padding-left: 12px;
+  border-left: 1px solid var(--line-2);
+}
+.play-rolls__total span {
+  color: var(--text-3);
+  font: 600 11.5px/1.2 var(--font-ui);
+  white-space: nowrap;
+}
+.play-rolls__total strong {
+  color: var(--text-1);
+  font: 700 28px/1.05 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+}
+.play-rolls__close {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+}
+/* many dice: two columns of rows ("d6 ×4  6 5 2 1") so the readout stays a strip, not a wall */
+.play-rolls__inner.is-dense {
+  max-width: min(660px, calc(100vw - 48px));
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+.is-dense .play-rolls__groups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, auto));
+  align-items: center;
+  gap: 5px 18px;
+}
+.is-dense .play-rolls__group {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+.is-dense .play-rolls__name {
+  flex: none;
+  width: 84px;
+}
+.is-dense .play-rolls__chips {
+  flex-wrap: nowrap;
+}
+.is-dense .play-rolls__chip {
+  min-width: 24px;
+  height: 24px;
+  padding: 0 4px;
+  border-radius: 6px;
+  font-size: 13.5px;
+}
+.is-dense .play-rolls__chip.is-wide {
+  font-size: 11px;
+}
+.is-dense .play-rolls__chip img {
+  width: 18px;
+  height: 18px;
+}
+@media (pointer: coarse) {
+  .is-dense .play-rolls__chip {
+    min-width: 28px;
+    height: 28px;
+    font-size: 15px;
+  }
+}
+@media (pointer: coarse) {
+  .play-rolls__inner {
+    padding-right: 54px;
+  }
+  .play-rolls__chip {
+    min-width: 34px;
+    height: 34px;
+    font-size: 18px;
+  }
+}
+@keyframes play-rolls-in {
+  from {
+    opacity: 0;
+    translate: 0 6px;
+  }
+}
+@keyframes play-rolls-out {
+  to {
+    opacity: 0;
+    translate: 0 4px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .play-dicebar,
+  .play-rolls__inner,
+  .play-rolls.is-leaving .play-rolls__inner {
+    animation: none;
+  }
+}
+
+/* ---------------------------------------------------------------- */
+/* Hand tray                                                           */
+/* ---------------------------------------------------------------- */
+
+.play-hand {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 45;
+  height: var(--tray-h);
+  pointer-events: none;
+  transition: transform var(--dur-slow) var(--ease-out);
+}
+.play-hand > * {
+  pointer-events: auto;
+}
+/* The shelf is only a tint: presses go through it to the table and the pieces resting under it.
+   Only the tab and the cards are controls; a carried card finds the tray by its rectangle. */
+.play-hand > .play-hand__shelf {
+  pointer-events: none;
+}
+.play-hand__shelf {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.26) 55%, rgba(0, 0, 0, 0.42));
+  transition:
+    background var(--dur-med),
+    box-shadow var(--dur-med);
+}
+.play-hand.is-collapsed {
+  transform: translateY(calc(var(--tray-h) - 48px));
+}
+.play-hand.is-collapsed .play-hand__shelf {
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.3) 70%);
+}
+.play-hand.is-collapsed.is-inviting {
+  transform: translateY(calc(var(--tray-h) - 92px));
+}
+.play-hand.is-inviting .play-hand__shelf {
+  background: linear-gradient(180deg, rgba(230, 167, 86, 0), rgba(230, 167, 86, 0.14) 45%, rgba(230, 167, 86, 0.22));
+  box-shadow: inset 0 1.5px 0 rgba(230, 167, 86, 0.35);
+}
+.play-hand.is-over .play-hand__shelf {
+  background: linear-gradient(180deg, rgba(230, 167, 86, 0.06), rgba(230, 167, 86, 0.24) 45%, rgba(230, 167, 86, 0.32));
+  box-shadow: inset 0 2px 0 var(--accent);
+}
+.play-hand__invite {
+  position: absolute;
+  left: 50%;
+  top: 12px;
+  color: var(--accent-strong);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  white-space: nowrap;
+  transform: translateX(-50%);
+  pointer-events: none !important;
+}
+.play-hand.is-over .play-hand__invite {
+  top: -26px;
+}
+.play-hand__tab {
+  position: absolute;
+  left: 14px;
+  top: 8px;
+  z-index: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 10px 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--bg-glass);
+  backdrop-filter: blur(14px);
+  color: var(--text-2);
+  font: 600 13px var(--font-ui);
+  box-shadow:
+    var(--shadow-2),
+    inset 0 0 0 1px var(--line-2);
+  cursor: pointer;
+  transition: color var(--dur-fast), background var(--dur-fast);
+}
+.play-hand__tab:hover {
+  color: var(--text-1);
+}
+.play-hand__tab:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+.play-hand__count {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12px;
+  line-height: 20px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.play-hand__empty {
+  position: absolute;
+  left: 50%;
+  top: 22px;
+  max-width: calc(100% - 320px);
+  padding: 12px 20px;
+  border: 1.5px dashed rgba(255, 255, 255, 0.24);
+  border-radius: var(--r-lg);
+  background: rgba(0, 0, 0, 0.2);
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 13px;
+  text-align: center;
+  transform: translateX(-50%);
+  pointer-events: none !important;
+}
+/* The coach mark already says "drag the top card" — don't say it twice. */
+.play-table:has(.play-coach) .play-hand__empty {
+  display: none;
+}
+.play-hand__fan {
+  position: absolute;
+  left: 50%;
+  top: var(--fan-top, 13px);
+  width: 0;
+  height: 0;
+}
+.play-hand__card {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 50% 100%;
+  transition: transform 280ms var(--ease-out);
+}
+.play-hand__lift {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transition: transform 200ms var(--ease-out);
+}
+.play-hand__arrive {
+  width: 100%;
+  height: 100%;
+}
+.play-hand__face {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: var(--r);
+  background: var(--paper);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.3),
+    -2px 0 8px rgba(0, 0, 0, 0.22),
+    0 10px 22px rgba(0, 0, 0, 0.4);
+  cursor: grab;
+  transition: box-shadow 200ms var(--ease-out);
+}
+.play-hand__face img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+.play-hand__face .play-card__blank {
+  font-size: 15px;
+}
+@media (hover: hover) {
+  .play-hand__card:hover {
+    z-index: 400 !important;
+  }
+  .play-hand__card:hover .play-hand__lift {
+    transform: translateY(-24%) rotate(calc(var(--rot) * -1)) scale(1.06);
+  }
+  .play-hand__card:hover .play-hand__face {
+    box-shadow:
+      0 0 0 1px rgba(0, 0, 0, 0.3),
+      0 18px 34px rgba(0, 0, 0, 0.5);
+  }
+}
+.play-hand__card.is-raised .play-hand__lift {
+  transform: translateY(-30%) rotate(calc(var(--rot) * -1)) scale(1.08);
+}
+.play-hand__card.is-raised .play-hand__face {
+  box-shadow:
+    0 0 0 2px var(--accent),
+    0 18px 34px rgba(0, 0, 0, 0.5);
+}
+.play-hand__actions {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 10px);
+  z-index: 2;
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--bg-glass);
+  backdrop-filter: blur(14px);
+  box-shadow:
+    var(--shadow-2),
+    inset 0 0 0 1px var(--line-2);
+  transform: translateX(-50%);
+  animation: play-pop 160ms var(--ease-spring);
+}
+.play-hand__action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 34px;
+  height: 34px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-2);
+  font: 600 13px var(--font-ui);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.play-hand__action:hover {
+  background: var(--bg-4);
+  color: var(--text-1);
+}
+.play-hand__action.is-primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.play-hand__action.is-primary:hover {
+  background: var(--accent-strong);
+}
+@keyframes play-pop {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) scale(0.9);
+  }
+}
+
+@media (pointer: coarse) {
+  /* the count badge is the ONLY whole-stack drag handle on a tablet (no Shift key) */
+  .play-world {
+    --hit-min: 46px;
+  }
+  /* badges are drawn at 1.4x on coarse pointers, so 32 px here lands at ~45 px on glass */
+  .play-badge {
+    height: 32px;
+    min-width: 32px;
+    padding: 0 11px 0 8px;
+    font-size: 14px;
+  }
+  .play-lockpin {
+    width: 32px;
+    height: 32px;
+  }
+  .play-hand__tab {
+    height: 44px;
+    padding: 0 14px 0 18px;
+    top: 2px;
+  }
+  .play-hand__action {
+    min-width: 44px;
+    height: 44px;
+  }
+}
+
+/* ---------------------------------------------------------------- */
+/* Inspect                                                             */
+/* ---------------------------------------------------------------- */
+
+.play-inspect {
+  position: absolute;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  background: rgba(10, 9, 12, 0.58);
+  backdrop-filter: blur(3px);
+  pointer-events: none;
+  animation: play-fade-in 120ms var(--ease-out);
+}
+.play-inspect.is-sticky {
+  pointer-events: auto;
+  cursor: zoom-out;
+}
+.play-inspect__stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 92%;
+  max-height: calc(100% - 130px);
+  animation: play-zoom-in 200ms var(--ease-spring);
+}
+@keyframes play-zoom-in {
+  from {
+    opacity: 0;
+    transform: scale(0.88);
+  }
+}
+.play-inspect__card {
+  position: relative;
+  height: min(70vh, 760px);
+  max-width: 88vw;
+  perspective: 2200px;
+}
+.play-inspect__flip {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  transition: transform 420ms cubic-bezier(0.3, 0.7, 0.3, 1);
+}
+.play-inspect__flip.is-down {
+  transform: rotateY(180deg);
+}
+.play-inspect__face {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: var(--r);
+  background: var(--paper);
+  backface-visibility: hidden;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.3),
+    0 30px 70px rgba(0, 0, 0, 0.6);
+}
+.play-inspect__face.is-back {
+  transform: rotateY(180deg);
+}
+.play-inspect__face img,
+.play-inspect__face .play-card__pattern {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.play-inspect__img {
+  max-width: 88vw;
+  max-height: 72vh;
+  border-radius: 8px;
+  box-shadow: var(--shadow-3);
+}
+.play-inspect__img.is-token {
+  width: min(42vh, 70vw);
+  height: auto;
+  border-radius: 12px;
+  box-shadow: none;
+  filter: drop-shadow(0 20px 40px rgba(0, 0, 0, 0.5));
+}
+.play-inspect__note {
+  width: min(52vh, 80vw);
+  aspect-ratio: 1;
+  padding: 32px;
+  background: var(--nc, var(--paper));
+  color: var(--paper-ink);
+  font: 500 24px/1.4 var(--font-display);
+  white-space: pre-wrap;
+  box-shadow: var(--shadow-3);
+}
+.play-inspect__bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 5px 5px 16px;
+  border-radius: 999px;
+  background: var(--bg-glass);
+  backdrop-filter: blur(16px);
+  box-shadow:
+    var(--shadow-2),
+    inset 0 0 0 1px var(--line-2);
+  cursor: default;
+  pointer-events: auto;
+}
+.play-inspect__title {
+  margin-right: 6px;
+  color: var(--text-1);
+  font: 600 15px var(--font-display);
+}
+.play-inspect__hint {
+  padding-right: 11px;
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+/* ---------------------------------------------------------------- */
+/* Browse dialog                                                       */
+/* ---------------------------------------------------------------- */
+
+.play-browse__search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  color: var(--text-3);
+}
+.play-browse__search > :last-child {
+  flex: 1;
+}
+.play-browse__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(116px, 1fr));
+  gap: 16px 14px;
+  max-height: min(56vh, 620px);
+  margin: 0 -8px;
+  padding: 6px 8px 20px;
+  overflow: auto;
+  /* fade the cut-off row so it reads as "more below", not as a broken grid */
+  mask-image: linear-gradient(180deg, #000 0 calc(100% - 26px), transparent 100%);
+  scrollbar-gutter: stable;
+}
+.play-browse__tile {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-md);
+  background: none;
+  color: var(--text-2);
+  text-align: left;
+  cursor: pointer;
+}
+.play-browse__tile:focus-visible {
+  outline: none;
+}
+.play-browse__tile:focus-visible .play-browse__img {
+  box-shadow: var(--ring);
+}
+.play-browse__img {
+  position: relative;
+  overflow: hidden;
+  border-radius: 7px;
+  background: var(--paper);
+  box-shadow:
+    0 0 0 1px var(--line-2),
+    var(--shadow-1);
+  transition:
+    transform var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast);
+}
+.play-browse__img img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.play-browse__img .play-card__blank {
+  font-size: 13px;
+}
+.play-browse__tile:hover .play-browse__img {
+  transform: translateY(-3px);
+  box-shadow:
+    0 0 0 1px var(--line-3),
+    var(--shadow-2);
+}
+.play-browse__tile.is-selected .play-browse__img {
+  transform: translateY(-4px);
+  box-shadow:
+    0 0 0 2px var(--accent),
+    0 0 0 6px var(--accent-soft),
+    var(--shadow-2);
+}
+.play-browse__down {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: rgba(20, 19, 24, 0.78);
+  color: var(--text-2);
+}
+.play-browse__meta {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+}
+.play-browse__pos {
+  flex: none;
+  color: var(--accent);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.play-browse__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.play-browse__spacer {
+  flex: 1;
+}
+.play-browse__pick {
+  color: var(--text-3);
+  font-size: 13px;
+}
+
+/* ---------------------------------------------------------------- */
+/* Shortcuts sheet                                                     */
+/* ---------------------------------------------------------------- */
+
+.play-keys {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr;
+  gap: 28px;
+}
+.play-keys__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 34px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--line-1);
+  font-size: 13px;
+}
+.play-keys__k {
+  flex: none;
+  width: 132px;
+  color: var(--text-1);
+}
+.play-keys__k.is-text {
+  width: 100px;
+  font-weight: 600;
+}
+.play-keys__v {
+  color: var(--text-2);
+}
+.play-keys__head {
+  margin-bottom: 6px;
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+@media (max-width: 760px) {
+  .play-keys {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ================================================================== */
+/* Page chrome                                                          */
+/* ================================================================== */
+
+.play-page {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: var(--bg-0);
+}
+.play-bar {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+.play-bar__group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 4px;
+  border-radius: 14px;
+  background: var(--bg-glass);
+  backdrop-filter: blur(18px) saturate(1.3);
+  box-shadow:
+    var(--shadow-2),
+    inset 0 0 0 1px var(--line-2);
+  pointer-events: auto;
+}
+.play-bar__spacer {
+  flex: 1;
+}
+.play-bar__title {
+  min-width: 0;
+  max-width: 34vw;
+  padding: 0 6px 0 6px;
+  overflow: hidden;
+  color: var(--text-1);
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.play-bar__sep {
+  width: 1px;
+  height: 20px;
+  margin: 0 4px;
+  background: var(--line-2);
+}
+.play-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px 0 4px;
+  color: var(--text-3);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.play-save__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 0 3px var(--success-soft);
+}
+.play-save.is-pending .play-save__dot,
+.play-save.is-saving .play-save__dot {
+  background: var(--warning);
+  box-shadow: 0 0 0 3px var(--warning-soft);
+  animation: play-blink 900ms ease-in-out infinite alternate;
+}
+.play-save.is-error {
+  color: var(--danger);
+}
+.play-save.is-error .play-save__dot {
+  background: var(--danger);
+  box-shadow: 0 0 0 3px var(--danger-soft);
+}
+@keyframes play-blink {
+  to {
+    opacity: 0.35;
+  }
+}
+@media (max-width: 900px) {
+  .play-save__text {
+    display: none;
+  }
+  .play-bar__title {
+    max-width: 30vw;
+    font-size: 16px;
+  }
+}
+
+/* rules slide-over */
+.play-rules {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 75;
+  display: flex;
+  flex-direction: column;
+  width: min(480px, 94vw);
+  background: var(--bg-1);
+  box-shadow:
+    var(--shadow-3),
+    inset 1px 0 0 var(--line-2);
+  transform: translateX(104%);
+  transition: transform var(--dur-slow) var(--ease-out);
+}
+.play-rules.is-open {
+  transform: none;
+}
+.play-rules__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 60px;
+  padding: 10px 10px 10px 20px;
+  border-bottom: 1px solid var(--line-1);
+}
+.play-rules__head h2 {
+  flex: 1;
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-xl);
+  font-weight: 600;
+}
+.play-rules__body {
+  flex: 1;
+  padding: 18px 20px 40px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.play-rules__label {
+  margin: 0 0 8px;
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.play-rules__notes {
+  margin-bottom: 22px;
+  padding: 14px 16px;
+  border-radius: var(--r-md);
+  background: var(--paper);
+  color: var(--paper-ink);
+  font-size: 14px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  box-shadow: var(--shadow-1);
+}
+.play-rules__page {
+  position: relative;
+  margin-bottom: 8px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: #fff;
+  box-shadow: var(--shadow-2);
+}
+.play-rules__page canvas,
+.play-rules__page img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.play-rules__page .ui-spinner {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  margin: -9px;
+  color: #999;
+}
+.play-rules__num {
+  margin-bottom: 16px;
+  color: var(--text-4);
+  font-size: 11px;
+  text-align: center;
+}
+
+/* coach mark */
+.play-coach {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--hand-h, 0px) + 22px);
+  z-index: 46;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  max-width: calc(100% - 32px);
+  padding: 10px 10px 10px 18px;
+  border-radius: 16px;
+  background: var(--bg-glass);
+  backdrop-filter: blur(18px) saturate(1.3);
+  box-shadow:
+    var(--shadow-3),
+    inset 0 0 0 1px var(--line-2);
+  transform: translateX(-50%);
+  animation: play-rise 420ms 500ms var(--ease-out) both;
+}
+@keyframes play-rise {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 16px);
+  }
+}
+.play-coach__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-2);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.play-coach__item svg {
+  flex: none;
+  color: var(--accent);
+}
+.play-coach__item b {
+  color: var(--text-1);
+  font-weight: 600;
+}
+@media (max-width: 1000px) {
+  .play-coach {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px 16px;
+    width: max-content;
+    padding: 12px 16px;
+  }
+}
+
+/* centred glass card (loading / empty / error) */
+.play-center {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+.play-center__card {
+  max-width: 420px;
+  padding: 8px 8px 16px;
+  border-radius: var(--r-xl);
+  background: var(--bg-glass);
+  backdrop-filter: blur(18px);
+  box-shadow:
+    var(--shadow-3),
+    inset 0 0 0 1px var(--line-2);
+  pointer-events: auto;
+}
+.play-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 18px;
+  border-radius: 999px;
+  background: var(--bg-glass);
+  backdrop-filter: blur(14px);
+  color: var(--text-2);
+  font-size: 13px;
+  box-shadow: var(--shadow-2);
+}
+
+/* saves dialog */
+.play-saves {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.play-saves__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 8px 10px 14px;
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  box-shadow: inset 0 0 0 1px var(--line-1);
+}
+.play-saves__row.is-current {
+  box-shadow: inset 0 0 0 1px var(--accent-line);
+  background: var(--accent-soft);
+}
+.play-saves__main {
+  flex: 1;
+  min-width: 0;
+}
+.play-saves__name {
+  overflow: hidden;
+  color: var(--text-1);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.play-saves__meta {
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .play-ent__rot,
+  .play-piece,
+  .play-die,
+  .play-card__flip,
+  .play-hand__card,
+  .play-hand__lift,
+  .play-inspect__flip,
+  .play-ghost__scale {
+    transition: none !important;
+  }
+  .play-ghost__lift,
+  .play-counter__value,
+  .play-riffle,
+  .play-coach,
+  .play-ent.is-target .play-ent__body::after {
+    animation: none !important;
+  }
+}

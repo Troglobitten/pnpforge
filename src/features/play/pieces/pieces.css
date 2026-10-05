@@ -1,0 +1,11 @@
+/* Game piece renderer (PieceView). Shared by the play table, the setup palette and the component editor. */
+.piece3d {
+  position: relative;
+  pointer-events: none;
+}
+.piece3d__img {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+}

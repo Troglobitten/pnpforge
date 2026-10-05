@@ -1,0 +1,571 @@
+/* ============================ Editor shell ============================ */
+.ed {
+  display: grid;
+  grid-template-rows: 56px minmax(0, 1fr);
+  height: 100%;
+  background: var(--bg-0);
+}
+.ed-full {
+  display: grid;
+  place-items: center;
+  height: 100%;
+}
+.ed-error-detail {
+  display: block;
+  margin-top: 6px;
+  font-size: var(--fs-sm);
+  color: var(--text-4);
+}
+
+/* ---- top bar ---- */
+.ed-top {
+  position: relative;
+  z-index: var(--z-panel);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 0 12px 0 8px;
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--line-1);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+}
+.ed-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: var(--control-h);
+  padding: 0 10px 0 6px;
+  border-radius: var(--r-md);
+  color: var(--text-2);
+  font-weight: 550;
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+.ed-back:hover {
+  background: var(--bg-3);
+  color: var(--text-1);
+  text-decoration: none;
+}
+.ed-top__sep {
+  width: 1px;
+  height: 22px;
+  background: var(--line-2);
+  flex: none;
+}
+.ed-top__cover {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 0 0 1px var(--line-2), var(--shadow-1);
+}
+.ed-top__cover-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.ed-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 380px;
+  height: 36px;
+  padding: 0 8px;
+  margin-left: -4px;
+  border-radius: var(--r-sm);
+  font-size: 18px;
+  font-weight: 580;
+  color: var(--text-1);
+  border: 1px solid transparent;
+}
+.ed-name__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ed-name__pencil {
+  flex: none;
+  color: var(--text-3);
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+.ed-name:hover {
+  background: var(--bg-2);
+  border-color: var(--line-2);
+}
+.ed-name:hover .ed-name__pencil,
+.ed-name:focus-visible .ed-name__pencil {
+  opacity: 1;
+}
+@media (pointer: coarse) {
+  .ed-name__pencil {
+    opacity: 0.7;
+  }
+}
+.ed-name--input {
+  min-width: 8ch;
+  max-width: 40ch;
+  background: var(--bg-0);
+  border-color: var(--accent-line);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.ed-top__spacer {
+  flex: 1;
+}
+.ed-top__history {
+  display: flex;
+  gap: 2px;
+  margin-right: 4px;
+}
+
+/* save status */
+.ed-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: var(--r-full);
+  font-size: var(--fs-sm);
+  font-weight: 550;
+  white-space: nowrap;
+  flex: none;
+  animation: ui-fade-in var(--dur-med) var(--ease-out);
+}
+.ed-save.is-saved {
+  color: var(--text-3);
+}
+.ed-save.is-saved svg {
+  color: var(--success);
+}
+.ed-save.is-saving,
+.ed-save.is-dirty {
+  color: var(--text-2);
+}
+.ed-save__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--warning);
+}
+.ed-save.is-error {
+  background: var(--danger-soft);
+  color: var(--danger);
+  padding-right: 4px;
+  animation: ed-save-pulse 1.9s var(--ease-out) 3;
+}
+@keyframes ed-save-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(232, 113, 95, 0);
+  }
+  45% {
+    box-shadow: 0 0 0 4px rgba(232, 113, 95, 0.24);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ed-save.is-error {
+    animation: none;
+  }
+}
+.ed-leave__body {
+  margin: 0;
+  color: var(--text-2);
+  line-height: 1.55;
+}
+/* Three choices — they wrap instead of overflowing on a narrow screen. */
+.ed-leave .ui-dialog__foot {
+  flex-wrap: wrap;
+  row-gap: 10px;
+}
+.ed-leave .ui-dialog__foot .ui-btn--ghost {
+  margin-right: auto;
+}
+.ed-save__retry {
+  height: 20px;
+  padding: 0 8px;
+  border-radius: var(--r-full);
+  background: var(--danger);
+  color: #1b0b08;
+  font-weight: 650;
+  font-size: var(--fs-xs);
+}
+@media (pointer: coarse) {
+  .ed-save__retry {
+    height: 30px;
+    padding: 0 12px;
+  }
+  .ed-save.is-error {
+    height: 36px;
+  }
+}
+
+/* ---- body / nav ---- */
+.ed-body {
+  display: grid;
+  grid-template-columns: 228px minmax(0, 1fr);
+  min-height: 0;
+}
+.ed-main {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: auto;
+}
+.ed-main--loading {
+  display: grid;
+  place-items: center;
+  color: var(--text-3);
+}
+
+.ed-nav {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 14px 10px;
+  background: var(--bg-1);
+  border-right: 1px solid var(--line-1);
+  overflow-y: auto;
+}
+.ed-nav__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ed-nav__item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  height: 40px;
+  padding: 0 10px;
+  border-radius: var(--r-md);
+  color: var(--text-2);
+  font-weight: 550;
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+.ed-nav__item:hover {
+  background: var(--bg-2);
+  color: var(--text-1);
+  text-decoration: none;
+}
+.ed-nav__item.is-active {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+.ed-nav__item.is-active::before {
+  content: '';
+  position: absolute;
+  left: -10px;
+  top: 9px;
+  bottom: 9px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--accent);
+}
+.ed-nav__item--skel {
+  pointer-events: none;
+}
+.ed-nav__icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.ed-nav__pip {
+  display: none;
+}
+.ed-nav__label {
+  flex: 1;
+  min-width: 0;
+}
+.ed-nav__short {
+  display: none;
+}
+.ed-nav__count {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.ed-nav__item.is-active .ed-nav__count {
+  color: var(--accent);
+}
+@media (pointer: coarse) {
+  .ed-nav__item {
+    height: 46px;
+  }
+}
+
+.ed-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: auto;
+  padding: 10px;
+  border-radius: var(--r-lg);
+  background: var(--bg-2);
+  border: 1px solid var(--line-1);
+  color: var(--text-1);
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
+}
+.ed-progress:hover {
+  text-decoration: none;
+  background: var(--bg-3);
+  border-color: var(--line-2);
+}
+.ed-ring {
+  flex: none;
+  display: block;
+}
+.ed-progress__ring {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.ed-progress__frac {
+  position: absolute;
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+.ed-progress:hover .ed-progress__frac {
+  color: var(--text-1);
+}
+.ed-progress--skel {
+  pointer-events: none;
+}
+.ed-progress__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.ed-progress__title {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+.ed-progress__next {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ed-skel {
+  display: inline-block;
+  border-radius: 6px;
+  background: var(--bg-3);
+  animation: ed-pulse 1.2s var(--ease-in-out) infinite alternate;
+}
+@keyframes ed-pulse {
+  to {
+    opacity: 0.45;
+  }
+}
+
+.ed-show-narrow {
+  display: none;
+}
+
+/* ---- compact icon rail (tablet portrait / narrow) ---- */
+@media (max-width: 1000px) {
+  .ed-body {
+    grid-template-columns: 76px minmax(0, 1fr);
+  }
+  .ed-nav {
+    padding: 10px 8px;
+  }
+  .ed-nav__item {
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    height: 60px;
+    padding: 0 2px;
+  }
+  .ed-nav__item.is-active::before {
+    left: -8px;
+    top: 14px;
+    bottom: 14px;
+  }
+  .ed-nav__label,
+  .ed-nav__count {
+    display: none;
+  }
+  .ed-nav__short {
+    display: block;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+  .ed-nav__pip {
+    position: absolute;
+    top: -6px;
+    right: -11px;
+    display: grid;
+    place-items: center;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: var(--r-full);
+    background: var(--bg-4);
+    color: var(--text-1);
+    font-size: 9.5px;
+    font-weight: 700;
+    box-shadow: 0 0 0 2px var(--bg-1);
+  }
+  .ed-nav__item.is-active .ed-nav__pip {
+    background: var(--accent);
+    color: var(--accent-ink);
+  }
+  .ed-nav__pip--dot {
+    min-width: 8px;
+    width: 8px;
+    height: 8px;
+    top: -2px;
+    right: -5px;
+    padding: 0;
+    background: var(--success);
+  }
+  /* In the rail the ring keeps a chip around it (and its fraction inside), so
+     it reads as "progress · tap me", not as a page still loading. */
+  .ed-progress {
+    justify-content: center;
+    padding: 8px 4px;
+  }
+  .ed-progress__text {
+    display: none;
+  }
+  .ed-back__label,
+  .ed-hide-narrow {
+    display: none;
+  }
+  .ed-show-narrow {
+    display: inline;
+  }
+  .ed-name {
+    max-width: 200px;
+  }
+  /* Save status keeps its word on touch — the tooltip is unreachable there. */
+  .ed-save {
+    padding: 0 8px;
+    gap: 5px;
+  }
+  .ed-save.is-saving .ed-save__text {
+    display: none;
+  }
+}
+
+/* A full-screen tool (the Cutter) on a tablet: the nav becomes the icon rail, as on narrow screens. */
+@media (max-width: 1280px) {
+  .ed.is-compact-nav > .ed-body {
+      grid-template-columns: 76px minmax(0, 1fr);
+    }
+  .ed.is-compact-nav .ed-nav {
+      padding: 10px 8px;
+    }
+  .ed.is-compact-nav .ed-nav__item {
+      flex-direction: column;
+      justify-content: center;
+      gap: 4px;
+      height: 60px;
+      padding: 0 2px;
+    }
+  .ed.is-compact-nav .ed-nav__item.is-active::before {
+      left: -8px;
+      top: 14px;
+      bottom: 14px;
+    }
+  .ed.is-compact-nav .ed-nav__label,
+  .ed.is-compact-nav .ed-nav__count {
+      display: none;
+    }
+  .ed.is-compact-nav .ed-nav__short {
+      display: block;
+      font-size: 10.5px;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+    }
+  .ed.is-compact-nav .ed-nav__pip {
+      position: absolute;
+      top: -6px;
+      right: -11px;
+      display: grid;
+      place-items: center;
+      min-width: 16px;
+      height: 16px;
+      padding: 0 4px;
+      border-radius: var(--r-full);
+      background: var(--bg-4);
+      color: var(--text-1);
+      font-size: 9.5px;
+      font-weight: 700;
+      box-shadow: 0 0 0 2px var(--bg-1);
+    }
+  .ed.is-compact-nav .ed-nav__item.is-active .ed-nav__pip {
+      background: var(--accent);
+      color: var(--accent-ink);
+    }
+  .ed.is-compact-nav .ed-nav__pip--dot {
+      min-width: 8px;
+      width: 8px;
+      height: 8px;
+      top: -2px;
+      right: -5px;
+      padding: 0;
+      background: var(--success);
+    }
+  .ed.is-compact-nav /* In the rail the ring keeps a chip around it (and its fraction inside),
+  .ed.is-compact-nav so
+       it reads as "progress · tap me",
+  .ed.is-compact-nav not as a page still loading. */
+    .ed-progress {
+      justify-content: center;
+      padding: 8px 4px;
+    }
+  .ed.is-compact-nav .ed-progress__text {
+      display: none;
+    }
+  .ed.is-compact-nav .ed-back__label,
+  .ed.is-compact-nav .ed-hide-narrow {
+      display: none;
+    }
+  .ed.is-compact-nav .ed-show-narrow {
+      display: inline;
+    }
+  .ed.is-compact-nav .ed-name {
+      max-width: 200px;
+    }
+  .ed.is-compact-nav .ed-save {
+      padding: 0 8px;
+      gap: 5px;
+    }
+  .ed.is-compact-nav .ed-save.is-saving .ed-save__text {
+      display: none;
+    }
+}
+@media (max-width: 1000px) and (pointer: coarse) {
+  .ed-nav__item {
+    height: 64px;
+  }
+}

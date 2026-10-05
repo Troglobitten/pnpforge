@@ -1,0 +1,14 @@
+services:
+  pnpforge:
+    # the published image; swap for `build: .` to run your own working copy
+    image: ghcr.io/troglobitten/pnpforge:latest
+    container_name: pnpforge
+    restart: unless-stopped
+    ports:
+      - "3717:3717"
+    volumes:
+      - ./data:/data
+    environment:
+      # PNPFORGE_PORT: "3717"
+      # PNPFORGE_LOG: "warn"
+      TZ: ${TZ:-UTC}

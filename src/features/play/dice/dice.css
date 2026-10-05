@@ -1,0 +1,66 @@
+/* Polyhedral die renderer (DieView). Shared by the play table and the component editor. */
+.die3d {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  translate: -50% -50%;
+  pointer-events: none;
+}
+.die3d__body {
+  position: absolute;
+  inset: 0;
+  transform-origin: 50% 50%;
+}
+.die3d__vec {
+  position: absolute;
+  inset: 0;
+}
+.die3d__svg {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+}
+.die3d__shadow {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(0, 0, 0, 0.5) 0%, rgba(0, 0, 0, 0.36) 45%, rgba(0, 0, 0, 0.12) 78%, rgba(0, 0, 0, 0) 100%);
+  transform-origin: 50% 50%;
+}
+/* the tumbling die is drawn here (no SVG text relayout per frame); empty (0x0 until first use) at rest */
+.die3d__canvas {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  pointer-events: none;
+}
+/* facets live in label units under one scale; keep the seam-covering stroke a constant screen width */
+.die3d__svg polygon {
+  vector-effect: non-scaling-stroke;
+}
+.die3d__num {
+  font-family: var(--font-ui);
+  font-weight: 760;
+  /* no font-variant-numeric: canvas cannot apply it, and the tumbling canvas and resting SVG
+     must draw the same glyphs (tabular digits made the result visibly change at landing) */
+  text-rendering: geometricPrecision;
+  font-kerning: normal;
+}
+
+/* table selection ring, drawn by the die so it travels with it through a roll (mirrors .play-ent__body::after) */
+.die3d__ring {
+  position: absolute;
+  inset: calc(var(--px, 1) * -4px);
+  display: none;
+  border-radius: calc(10px + var(--px, 1) * 4px);
+  box-shadow:
+    0 0 0 calc(var(--px, 1) * 2px) var(--accent),
+    0 0 calc(var(--px, 1) * 16px) calc(var(--px, 1) * 2px) rgba(230, 167, 86, 0.35);
+  pointer-events: none;
+}
+.die3d__ring.is-on {
+  display: block;
+  /* its own layer: a moving ring must not repaint its glow every frame (30 selected dice rolling) */
+  will-change: transform;
+}
